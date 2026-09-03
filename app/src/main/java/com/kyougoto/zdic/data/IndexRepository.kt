@@ -12,15 +12,14 @@ object IndexRepository {
         val html = ZdicApi.getHtml(ZdicUrl.radicalIndex(simplified))
         val doc = Jsoup.parse(html, "https://www.zdic.net/")
         val out = ArrayList<com.kyougoto.zdic.data.model.RadicalNode>()
-        // 优先结构：索引卡片中包 <span><a href="/zd/bs/?bs=*"...>部首字</a></span>
-        doc.select("a[href*=/zd/bs/?bs=], a[href*=/zd/bs/?bs%3D]").forEach { a ->
-            val href = a.attr("href")
-            val t = a.text().trim()
-            if (t.length in 1..2 && CJK_REGEX.containsMatchIn(t)) {
-                out.add(com.kyougoto.zdic.data.model.RadicalNode(t, 0, href, ""))
+        // 汉典部首索引页使用 <a class="pck" title=... data-bs="部首字">部首字</a>
+        doc.select("a.pck").forEach { a ->
+            val label = a.attr("data-bs").ifEmpty { a.ownText() }.trim()
+            if (label.length in 1..2 && CJK_REGEX.containsMatchIn(label)) {
+                out.add(com.kyougoto.zdic.data.model.RadicalNode(label, 0, ZdicUrl.radicalChars(label), ""))
             }
         }
-        return out.distinctBy { it.label }.take(250)
+        return out.distinctBy { it.label }.take(300)
     }
 
     /** 给定部首，抓取该部首下的字列表页并抽出单字链接。 */

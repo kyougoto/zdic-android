@@ -1,5 +1,9 @@
 package com.kyougoto.zdic.ui
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +63,8 @@ import com.kyougoto.zdic.util.RichText
 @Composable
 fun MainScreen(vm: MainViewModel = viewModel()) {
     val snackbar = remember { SnackbarHostState() }
+    // 系统返回键：非首页时回到上一页/首页，首页时保持默认(退出)
+    BackHandler(enabled = vm.screen != Screen.Home) { vm.back() }
     vm.message?.let { m ->
         LaunchedEffect(m) {
             snackbar.showSnackbar(m)
@@ -80,6 +86,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                 is Screen.Zi -> ZiScreen(s.zi)
                 is Screen.Word -> WordScreen(s.w)
                 is Screen.RadicalList -> RadicalGrid(s.radicals, onPick = { vm.openRadicalChars(it.label) })
+                is Screen.RadicalBrowser -> BrowserScreen(url = s.url, onBack = { vm.back() })
                 is Screen.RadicalChars -> CharList(s.radical, s.chars, onPick = { vm.openCursor(it.display) })
             }
             if (vm.isLoading && vm.screen == Screen.Home) {
@@ -326,3 +333,23 @@ private fun buildMeta(zi: HanZi): List<Pair<String, String>> = listOf(
     "字形分析" to zi.zixing,
     "简体/繁体" to zi.fanjianzi,
 ).filter { it.second.isNotEmpty() }
+
+
+@Composable
+fun BrowserScreen(url: String, onBack: () -> Unit) {
+    // 部首等列表页涉及站点前端 JS 渲染，用内置 WebView 直接承载官方页面。
+    // 点击页内汉字会在 WebView 内打开官方详情（保留站点原有交互）。
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { ctx ->
+            WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+                webViewClient = WebViewClient()
+                loadUrl(url)
+            }
+        }
+    )
+}

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.kyougoto.zdic.data.IndexRepository
 import com.kyougoto.zdic.data.LookupResult
 import com.kyougoto.zdic.data.ZdicRepository
+import com.kyougoto.zdic.data.ZdicUrl
 import kotlinx.coroutines.launch
 
 sealed interface Screen {
@@ -16,6 +17,7 @@ sealed interface Screen {
     data class Word(val w: com.kyougoto.zdic.data.model.CiYu, val query: String) : Screen
     data class RadicalList(val radicals: List<com.kyougoto.zdic.data.model.RadicalNode>) : Screen
     data class RadicalChars(val radical: String, val chars: List<com.kyougoto.zdic.data.model.SearchHit>) : Screen
+    data class RadicalBrowser(val url: String) : Screen
 }
 
 class MainViewModel : ViewModel() {
@@ -58,13 +60,10 @@ class MainViewModel : ViewModel() {
     }
 
     fun openRadicalChars(radical: String) {
-        isLoading = true
-        viewModelScope.launch {
-            val list = try { index.charsOfRadical(radical) } catch (e: Exception) { emptyList() }
-            if (list.isEmpty()) toast("该部首暂无可用字")
-            else screen = Screen.RadicalChars(radical, list)
-            isLoading = false
-        }
+        // 部首下字列表依赖站点前端 AJAX，直接抓取不稳定；改用内置 WebView 打开官方对应页，
+        // 让站点自身 JS 渲染出部首下的字，用户点字后再回到本 App 查字接口。
+        screen = Screen.RadicalBrowser(ZdicUrl.radicalChars(radical))
+        isLoading = false
     }
 
     fun openCursor(zi: String) { search(zi) }
