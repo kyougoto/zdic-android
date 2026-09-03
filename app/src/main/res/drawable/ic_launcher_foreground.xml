@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- open book / dictionary glyph centered in the adaptive safe zone -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M30,34 L50,40 L50,72 L28,66 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M78,34 L58,40 L58,72 L80,66 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,38 L58,40 L58,72 L50,70 Z" />
+    <path
+        android:fillColor="#FFF4C96B"
+        android:pathData="M32,20 L78,20 A6,6 0 0 1 84,26 L84,30 L76,34 L30,34 A6,6 0 0 1 24,28 L24,26 A6,6 0 0 1 32,20 Z" />
+</vector>
