@@ -11,3 +11,7 @@ local.properties
 
 # Log
 *.log
+/build
+**/build
+app/build
+.kotlin
