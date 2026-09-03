@@ -404,7 +404,7 @@ fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
                         val u = req.url.toString()
                         if (!u.contains("zdic.net")) return super.shouldInterceptRequest(view, request)
                         return try {
-                            val conn = URL(u).openConnection() as HttpURLConnection
+                            val conn = java.net.URL(u).openConnection() as java.net.HttpURLConnection
                             conn.requestMethod = "GET"
                             conn.apply {
                                 connectTimeout = 15000
@@ -417,7 +417,6 @@ fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
                             val body = conn.inputStream.readBytes().toString(StandardCharsets.UTF_8)
                             conn.disconnect()
                             val mime = "text/html; charset=utf-8"
-                            if (request?.accept != null && req.accept?.contains("text/html") == false && !u.contains("/hans/") && !u.endsWith("/")) {}
                             val out = inject(body, siteCss)
                             WebResourceResponse(mime, "UTF-8", ByteArrayInputStream(out.toByteArray(StandardCharsets.UTF_8)))
                         } catch (t: Throwable) {
