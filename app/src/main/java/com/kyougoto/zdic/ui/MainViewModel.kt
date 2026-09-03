@@ -17,7 +17,7 @@ sealed interface Screen {
     data class Word(val w: com.kyougoto.zdic.data.model.CiYu, val query: String) : Screen
     data class RadicalList(val radicals: List<com.kyougoto.zdic.data.model.RadicalNode>) : Screen
     data class RadicalChars(val radical: String, val chars: List<com.kyougoto.zdic.data.model.SearchHit>) : Screen
-    data class RadicalBrowser(val url: String) : Screen
+    data class Browse(val url: String, val title: String) : Screen
 }
 
 class MainViewModel : ViewModel() {
@@ -62,7 +62,7 @@ class MainViewModel : ViewModel() {
     fun openRadicalChars(radical: String) {
         // 部首下字列表依赖站点前端 AJAX，直接抓取不稳定；改用内置 WebView 打开官方对应页，
         // 让站点自身 JS 渲染出部首下的字，用户点字后再回到本 App 查字接口。
-        screen = Screen.RadicalBrowser(ZdicUrl.radicalChars(radical))
+        screen = Screen.Browse(ZdicUrl.radicalChars(radical), "部首检字")
         isLoading = false
     }
 
@@ -70,5 +70,7 @@ class MainViewModel : ViewModel() {
 
     /** 部首 WebView 拾字后回到原生详情 */
     fun openBrowsed(word: String) { search(word) }
+    /** 打开任意 ZDIC 检字索引（拼音/康熙/繁体部首/部件等），页内选字回原生详情 */
+    fun openIndex(url: String, title: String) { screen = Screen.Browse(url, title); isLoading = false }
     fun back() { screen = Screen.Home; isLoading = false }
 }

@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kyougoto.zdic.data.model.CiYu
+import com.kyougoto.zdic.data.ZdicUrl
 import com.kyougoto.zdic.data.model.HanZi
 import com.kyougoto.zdic.data.model.RadicalNode
 import com.kyougoto.zdic.data.model.SearchHit
@@ -87,12 +89,13 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                 Screen.Home -> HomeScreen(
                     onSearch = { vm.search(it) },
                     onOpenRadical = { vm.openRadical() },
+                    onBrowse = { url, title -> vm.openIndex(url, title) },
                     loading = vm.isLoading,
                 )
                 is Screen.Zi -> ZiScreen(s.zi)
                 is Screen.Word -> WordScreen(s.w)
                 is Screen.RadicalList -> RadicalGrid(s.radicals, onPick = { vm.openRadicalChars(it.label) })
-                is Screen.RadicalBrowser -> BrowserScreen(url = s.url, onBack = { vm.back() }, onWord = { vm.openBrowsed(it) })
+                is Screen.Browse -> BrowserScreen(url = s.url, onBack = { vm.back() }, onWord = { vm.openBrowsed(it) })
                 is Screen.RadicalChars -> CharList(s.radical, s.chars, onPick = { vm.openCursor(it.display) })
             }
             if (vm.isLoading && vm.screen == Screen.Home) {
@@ -116,7 +119,7 @@ private fun TopBar(onBack: () -> Unit) {
 }
 
 @Composable
-fun HomeScreen(onSearch: (String) -> Unit, onOpenRadical: () -> Unit, loading: Boolean) {
+fun HomeScreen(onSearch: (String) -> Unit, onOpenRadical: () -> Unit, onBrowse: (String, String) -> Unit, loading: Boolean) {
     var query by remember { mutableStateOf("") }
     LazyColumn(
         modifier = Modifier
@@ -154,10 +157,47 @@ fun HomeScreen(onSearch: (String) -> Unit, onOpenRadical: () -> Unit, loading: B
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("立刻查询") }
         }
+        item { Spacer(Modifier.height(20.dp)) }
+        item { Text("· 检字 / 索引 ·", style = MaterialTheme.typography.labelLarge, color = Accent) }
         item { Spacer(Modifier.height(8.dp)) }
         item {
-            TextButton(onClick = onOpenRadical) { Text("部首检字") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val idx = listOf(
+                    Triple("部首", { onOpenRadical() }, "部首检字"),
+                    Triple("拼音", { onBrowse(ZdicUrl.pinyinIndex(), "拼音索引") }, "拼音索引"),
+                    Triple("康熙", { onBrowse(ZdicUrl.kangxi(), "康熙部首") }, "康熙部首"),
+                )
+                idx.forEach { (label, act, _) ->
+                    OutlinedButton(
+                        onClick = act,
+                        modifier = Modifier.weight(1f),
+                    ) { Text(label) }
+                }
+            }
         }
+        item { Spacer(Modifier.height(10.dp)) }
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val idx2 = listOf(
+                    Triple("繁体部首", { onBrowse(ZdicUrl.radicalIndex(simplified = false), "繁体部首索引") }, ""),
+                    Triple("部件检索", { onBrowse(ZdicUrl.chaiZi(), "汉字拆分查询") }, ""),
+                )
+                idx2.forEach { (label, act, _) ->
+                    OutlinedButton(
+                        onClick = act,
+                        modifier = Modifier.weight(1f),
+                    ) { Text(label) }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(6.dp)) }
+        item { Text("选字后自动在 App 内查详情", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
     }
 }
 
