@@ -1,4 +1,10 @@
 package com.kyougoto.zdic.ui
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import java.io.ByteArrayInputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.nio.charset.StandardCharsets
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.ui.viewinterop.AndroidView
@@ -338,17 +344,34 @@ private fun buildMeta(zi: HanZi): List<Pair<String, String>> = listOf(
 @Composable
 
 fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
-    val css =
-        "html,body{background:#F8F6F0 !important;color:#232323 !important}" +
-        "header,.site-header,.site-header__inner,.header-wrap,.top-bar,.top-bar__inner," +
-        ".top-bar__nav,.drawer,.drawer__panel,.drawer__overlay,.dropdown,.dropdown__panel," +
-        ".search-bar,.header-actions,.ads,.adsbygoogle,ins,iframe,footer,.site-footer,.footer," +
-        "#footer,.fb-modal,#feedback{display:none !important}" +
-        ".bs-content a,td a{color:#B03A2E !important;font-size:20px}" +
-        "a.pck{color:#3E5C46 !important;font-size:22px}"
-    val js = "(function(){var s=document.createElement('style');" +
-        "s.type='text/css';s.textContent='" + css.replace("'", "\\'") + "';" +
-        "document.head.appendChild(s);})();"
+    // 通过拦截 HTML 响应并在文档内植入 <style> 隐藏站点导航/广告并统一为宣纸底色（比 JS 注入可靠，
+    // 样式随文档解析即生效，不受广告/列表是后加载还是 iframe、以及注入时机影响）。
+    val siteCss =
+        "html,body{background:#F8F6F0 !important;color:#1f2937 !important;margin:0 !important;max-width:100% !important}" +
+        "header,.site-header,.site-header__inner,.header-wrap,.topbar,.top-bar,.top-bar__inner," +
+        ".top-bar__nav,.main-nav,.nav,.drawer,.drawer__panel,.drawer__overlay,.dropdown,.dropdown__panel," +
+        "#header,#topnav,.header-actions,.search-bar,.searchbox,.ads,.adsbygoogle,.banner-ad,.banner," +
+        "footer,.site-footer,.footer,#footer,.copyright,.fb-modal,#feedback,script,noscript{display:none !important}" +
+        ".bs-content a,td a{font-size:20px !important;color:#B03A2E !important;line-height:1.9 !important}" +
+        "a.pck{font-size:21px !important;color:#3E5C46 !important}" +
+        "img,.char-glyph__img{max-width:100% !important}"
+    fun inject(html: String, css: String): String {
+        val style = "<style id=zdic-css>" + css + "</style>"
+        val lower = html.lowercase()
+        val h = lower.indexOf("</head>")
+        return if (h >= 0) {
+            // 拆开保证原样拼接但只在 </head> 前插入，保留大小写原内容
+            val split = h
+            html.substring(0, split) + style + html.substring(split)
+        } else {
+            val hi = lower.indexOf("<html")
+            if (hi >= 0) {
+                val afterTag = html.indexOf(">", hi) + 1
+                html.substring(0, afterTag) + style + html.substring(afterTag)
+            } else style + html
+        }
+    }
+    val ua = "Mozilla/5.0 (Linux; Android 13; Pixel 7) Chrome/120.0.0.0 Mobile Safari/537.36"
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
@@ -357,7 +380,9 @@ fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
                 settings.domStorageEnabled = true
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
+                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 webViewClient = object : WebViewClient() {
+                    // 点某字详情链接 → 交回原生渲染
                     override fun shouldOverrideUrlLoading(view: WebView?, urlStr: String?): Boolean {
                         val href = urlStr ?: return false
                         val mk = "/hans/"
@@ -372,9 +397,32 @@ fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
                         }
                         return false
                     }
-                    override fun onPageFinished(view: WebView?, urlStr: String?) {
-                        super.onPageFinished(view, urlStr)
-                        try { view?.evaluateJavascript(js, null) } catch (_: Exception) {}
+                    // 拦截 html 主框架，响应改写注入样式
+                    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                        val req = request ?: return super.shouldInterceptRequest(view, request)
+                        if (!req.isForMainFrame) return super.shouldInterceptRequest(view, request)
+                        val u = req.url.toString()
+                        if (!u.contains("zdic.net")) return super.shouldInterceptRequest(view, request)
+                        return try {
+                            val conn = URL(u).openConnection() as HttpURLConnection
+                            conn.requestMethod = "GET"
+                            conn.apply {
+                                connectTimeout = 15000
+                                readTimeout = 15000
+                                addRequestProperty("User-Agent", ua)
+                                instanceFollowRedirects = true
+                            }
+                            val code = conn.responseCode
+                            if (code !in 200..299) { conn.disconnect(); return super.shouldInterceptRequest(view, request) }
+                            val body = conn.inputStream.readBytes().toString(StandardCharsets.UTF_8)
+                            conn.disconnect()
+                            val mime = "text/html; charset=utf-8"
+                            if (request?.accept != null && req.accept?.contains("text/html") == false && !u.contains("/hans/") && !u.endsWith("/")) {}
+                            val out = inject(body, siteCss)
+                            WebResourceResponse(mime, "UTF-8", ByteArrayInputStream(out.toByteArray(StandardCharsets.UTF_8)))
+                        } catch (t: Throwable) {
+                            super.shouldInterceptRequest(view, request)
+                        }
                     }
                 }
                 loadUrl(url)
