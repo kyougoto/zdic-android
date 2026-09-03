@@ -1,7 +1,7 @@
 package com.kyougoto.zdic.ui
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
-import java.io.ByteArrayInputStream
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
@@ -344,34 +344,27 @@ private fun buildMeta(zi: HanZi): List<Pair<String, String>> = listOf(
 @Composable
 
 fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
-    // 通过拦截 HTML 响应并在文档内植入 <style> 隐藏站点导航/广告并统一为宣纸底色（比 JS 注入可靠，
-    // 样式随文档解析即生效，不受广告/列表是后加载还是 iframe、以及注入时机影响）。
-    val siteCss =
-        "html,body{background:#F8F6F0 !important;color:#1f2937 !important;margin:0 !important;max-width:100% !important}" +
+    // 用系统 WebView 承载 ZDIC 页面（不接管其 HTML 响应，避免站点 CSS/JS 失效）。
+    // 1) 点击页内 /hans/{字} → 解码后 onWord 交回 App 原生详情。
+    // 2) onPageFinished 后注入一段覆盖样式：把页面做“宣纸化”，隐藏站点导航栏/广告。
+    //    用 JSONObject.quote 对 CSS 可靠转义后作为 JS 字符串注入前端。
+    val css =
+        "html,body{background:#F8F6F0 !important;color:#1f2937 !important;margin:0 !important}" +
         "header,.site-header,.site-header__inner,.header-wrap,.topbar,.top-bar,.top-bar__inner," +
-        ".top-bar__nav,.main-nav,.nav,.drawer,.drawer__panel,.drawer__overlay,.dropdown,.dropdown__panel," +
-        "#header,#topnav,.header-actions,.search-bar,.searchbox,.ads,.adsbygoogle,.banner-ad,.banner," +
-        "footer,.site-footer,.footer,#footer,.copyright,.fb-modal,#feedback,script,noscript{display:none !important}" +
-        ".bs-content a,td a{font-size:20px !important;color:#B03A2E !important;line-height:1.9 !important}" +
-        "a.pck{font-size:21px !important;color:#3E5C46 !important}" +
-        "img,.char-glyph__img{max-width:100% !important}"
-    fun inject(html: String, css: String): String {
-        val style = "<style id=zdic-css>" + css + "</style>"
-        val lower = html.lowercase()
-        val h = lower.indexOf("</head>")
-        return if (h >= 0) {
-            // 拆开保证原样拼接但只在 </head> 前插入，保留大小写原内容
-            val split = h
-            html.substring(0, split) + style + html.substring(split)
-        } else {
-            val hi = lower.indexOf("<html")
-            if (hi >= 0) {
-                val afterTag = html.indexOf(">", hi) + 1
-                html.substring(0, afterTag) + style + html.substring(afterTag)
-            } else style + html
-        }
-    }
-    val ua = "Mozilla/5.0 (Linux; Android 13; Pixel 7) Chrome/120.0.0.0 Mobile Safari/537.36"
+        ".top-bar__nav,.main-nav,.nav,.drawer,.drawer__panel,.drawer__overlay,.drawer__section," +
+        ".dropdown,.dropdown__panel,.dropdown__trigger,#header,#topnav,.header-actions," +
+        ".search-bar,.searchbox,.ads,.adsbygoogle,.banner-ad,.banner,ins," +
+        "footer,.footer,.site-footer,.copyright,.fb-modal,#feedback{display:none !important}" +
+        "body{padding:12px !important}" +
+        ".bs-content a,td a,.char-card a,.dict-section__body a{color:#B03A2E !important;font-size:21px !important;line-height:1.9 !important}" +
+        "a.pck{color:#3E5C46 !important;font-size:22px !important}"
+    val cssJson = JSONObject.quote(css.toString())
+    val injection =
+        "(function(){" +
+        "var s=document.createElement('style');s.type='text/css';" +
+        "s.appendChild(document.createTextNode(" + cssJson + "));" +
+        "document.documentElement.appendChild(s);" +
+        "})();"
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
@@ -380,9 +373,8 @@ fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
                 settings.domStorageEnabled = true
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
-                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                 webViewClient = object : WebViewClient() {
-                    // 点某字详情链接 → 交回原生渲染
+                    // 点某字详情 → 交回原生渲染（不让它在 WebView 内开官方详情）
                     override fun shouldOverrideUrlLoading(view: WebView?, urlStr: String?): Boolean {
                         val href = urlStr ?: return false
                         val mk = "/hans/"
@@ -397,31 +389,11 @@ fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
                         }
                         return false
                     }
-                    // 拦截 html 主框架，响应改写注入样式
-                    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                        val req = request ?: return null
-                        if (!req.isForMainFrame) return null
-                        val u = req.url.toString()
-                        if (!u.contains("zdic.net")) return null
-                        return try {
-                            val conn = java.net.URL(u).openConnection() as java.net.HttpURLConnection
-                            conn.requestMethod = "GET"
-                            conn.apply {
-                                connectTimeout = 15000
-                                readTimeout = 15000
-                                addRequestProperty("User-Agent", ua)
-                                instanceFollowRedirects = true
-                            }
-                            val code = conn.responseCode
-                            if (code !in 200..299) { conn.disconnect(); return null }
-                            val body = conn.inputStream.readBytes().toString(StandardCharsets.UTF_8)
-                            conn.disconnect()
-                            val mime = "text/html; charset=utf-8"
-                            val out = inject(body, siteCss)
-                            WebResourceResponse(mime, "UTF-8", ByteArrayInputStream(out.toByteArray(StandardCharsets.UTF_8)))
-                        } catch (t: Throwable) {
-                            null
-                        }
+                    // 主文档加载完成后注入样式，隐藏导航/广告并铺宣纸底色
+                    override fun onPageFinished(view: WebView?, urlStr: String?) {
+                        super.onPageFinished(view, urlStr)
+                        try { view?.evaluateJavascript(injection, null) }
+                        catch (_: Exception) { }
                     }
                 }
                 loadUrl(url)
