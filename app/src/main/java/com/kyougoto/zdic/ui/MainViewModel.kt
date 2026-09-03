@@ -23,7 +23,7 @@ class MainViewModel : ViewModel() {
     private val repo = ZdicRepository()
     private val index = IndexRepository
 
-    var screen by mutableStateOf(Screen.Home)
+    var screen by mutableStateOf<Screen>(Screen.Home)
         private set
     var isLoading by mutableStateOf(false)
         private set
