@@ -72,6 +72,8 @@ class MainViewModel : ViewModel() {
     fun openIndex(url: String, title: String) { goto(Screen.Browse(url, title)) }
     /** 从 WebView 索引点某字 → 原生详情（保留 WebView 在栈中，返回可回索引） */
     fun openBrowsed(word: String) { search(word) }
+    fun openCursor(q: String) { search(q) }
+
     /** 详情页内的字/词/字形点按后跳转 */
     fun openTerm(q: String) { search(q) }
 }

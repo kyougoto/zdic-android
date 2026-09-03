@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyColumn
@@ -60,6 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -269,7 +271,7 @@ private fun ZiHeader(zi: HanZi, meta: List<Pair<String, String>>, onTerm: (Strin
             MetaDivider("其他字形")
             val grouped = zi.variants.take(30).groupBy { it.type.ifBlank { "字形" } }
             grouped.forEach { (type, vs) ->
-                LabeledChips(type.ifBlank { "字形" }, vs.map { it.zi.ifBlank { it.type } }, CJKSerif) { t -> onTerm(t) }
+                LabeledChips(type.ifBlank { "字形" }, vs.map { it.zi.ifBlank { it.type } }, serif = true) { t -> onTerm(t) }
             }
         }
         // 由该字组成的词 / 相关词语 → 可点跳转
@@ -331,6 +333,7 @@ private fun MetaDivider(title: String) {
     HorizontalDivider(Modifier.padding(vertical = 10.dp))
     Text(title, style = MaterialTheme.typography.titleSmall, color = Accent, modifier = Modifier.padding(bottom = 6.dp))
 }
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun LabeledChips(title: String, items: List<String>, serif: Boolean = true, onTap: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 2.dp)) {
