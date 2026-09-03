@@ -86,7 +86,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                 is Screen.Zi -> ZiScreen(s.zi)
                 is Screen.Word -> WordScreen(s.w)
                 is Screen.RadicalList -> RadicalGrid(s.radicals, onPick = { vm.openRadicalChars(it.label) })
-                is Screen.RadicalBrowser -> BrowserScreen(url = s.url, onBack = { vm.back() })
+                is Screen.RadicalBrowser -> BrowserScreen(url = s.url, onBack = { vm.back() }, onWord = { vm.openBrowsed(it) })
                 is Screen.RadicalChars -> CharList(s.radical, s.chars, onPick = { vm.openCursor(it.display) })
             }
             if (vm.isLoading && vm.screen == Screen.Home) {
@@ -336,9 +336,19 @@ private fun buildMeta(zi: HanZi): List<Pair<String, String>> = listOf(
 
 
 @Composable
-fun BrowserScreen(url: String, onBack: () -> Unit) {
-    // 部首等列表页涉及站点前端 JS 渲染，用内置 WebView 直接承载官方页面。
-    // 点击页内汉字会在 WebView 内打开官方详情（保留站点原有交互）。
+
+fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
+    val css =
+        "html,body{background:#F8F6F0 !important;color:#232323 !important}" +
+        "header,.site-header,.site-header__inner,.header-wrap,.top-bar,.top-bar__inner," +
+        ".top-bar__nav,.drawer,.drawer__panel,.drawer__overlay,.dropdown,.dropdown__panel," +
+        ".search-bar,.header-actions,.ads,.adsbygoogle,ins,iframe,footer,.site-footer,.footer," +
+        "#footer,.fb-modal,#feedback{display:none !important}" +
+        ".bs-content a,td a{color:#B03A2E !important;font-size:20px}" +
+        "a.pck{color:#3E5C46 !important;font-size:22px}"
+    val js = "(function(){var s=document.createElement('style');" +
+        "s.type='text/css';s.textContent='" + css.replace("'", "\\'") + "';" +
+        "document.head.appendChild(s);})();"
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { ctx ->
@@ -347,7 +357,26 @@ fun BrowserScreen(url: String, onBack: () -> Unit) {
                 settings.domStorageEnabled = true
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
-                webViewClient = WebViewClient()
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, urlStr: String?): Boolean {
+                        val href = urlStr ?: return false
+                        val mk = "/hans/"
+                        val idx = href.indexOf(mk)
+                        if (idx >= 0) {
+                            var term = href.substring(idx + mk.length)
+                            val q = term.indexOf('?')
+                            if (q >= 0) term = term.substring(0, q)
+                            term = term.trimEnd('/')
+                            val decoded = try { java.net.URLDecoder.decode(term, "UTF-8") } catch (e: Exception) { term }
+                            if (decoded.isNotEmpty()) { onWord(decoded); return true }
+                        }
+                        return false
+                    }
+                    override fun onPageFinished(view: WebView?, urlStr: String?) {
+                        super.onPageFinished(view, urlStr)
+                        try { view?.evaluateJavascript(js, null) } catch (_: Exception) {}
+                    }
+                }
                 loadUrl(url)
             }
         }

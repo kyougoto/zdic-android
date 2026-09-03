@@ -67,5 +67,8 @@ class MainViewModel : ViewModel() {
     }
 
     fun openCursor(zi: String) { search(zi) }
+
+    /** 部首 WebView 拾字后回到原生详情 */
+    fun openBrowsed(word: String) { search(word) }
     fun back() { screen = Screen.Home; isLoading = false }
 }
