@@ -399,10 +399,10 @@ fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
                     }
                     // 拦截 html 主框架，响应改写注入样式
                     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                        val req = request ?: return super.shouldInterceptRequest(view, request)
-                        if (!req.isForMainFrame) return super.shouldInterceptRequest(view, request)
+                        val req = request ?: return null
+                        if (!req.isForMainFrame) return null
                         val u = req.url.toString()
-                        if (!u.contains("zdic.net")) return super.shouldInterceptRequest(view, request)
+                        if (!u.contains("zdic.net")) return null
                         return try {
                             val conn = java.net.URL(u).openConnection() as java.net.HttpURLConnection
                             conn.requestMethod = "GET"
@@ -413,14 +413,14 @@ fun BrowserScreen(url: String, onBack: () -> Unit, onWord: (String) -> Unit) {
                                 instanceFollowRedirects = true
                             }
                             val code = conn.responseCode
-                            if (code !in 200..299) { conn.disconnect(); return super.shouldInterceptRequest(view, request) }
+                            if (code !in 200..299) { conn.disconnect(); return null }
                             val body = conn.inputStream.readBytes().toString(StandardCharsets.UTF_8)
                             conn.disconnect()
                             val mime = "text/html; charset=utf-8"
                             val out = inject(body, siteCss)
                             WebResourceResponse(mime, "UTF-8", ByteArrayInputStream(out.toByteArray(StandardCharsets.UTF_8)))
                         } catch (t: Throwable) {
-                            super.shouldInterceptRequest(view, request)
+                            null
                         }
                     }
                 }
