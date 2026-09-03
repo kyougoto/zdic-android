@@ -12,6 +12,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +36,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
+import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -92,8 +96,8 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                     onBrowse = { url, title -> vm.openIndex(url, title) },
                     loading = vm.isLoading,
                 )
-                is Screen.Zi -> ZiScreen(s.zi)
-                is Screen.Word -> WordScreen(s.w)
+                is Screen.Zi -> ZiScreen(s.zi, onTerm = { vm.openTerm(it) })
+                is Screen.Word -> WordScreen(s.w, onTerm = { vm.openTerm(it) })
                 is Screen.RadicalList -> RadicalGrid(s.radicals, onPick = { vm.openRadicalChars(it.label) })
                 is Screen.Browse -> BrowserScreen(url = s.url, onBack = { vm.back() }, onWord = { vm.openBrowsed(it) })
                 is Screen.RadicalChars -> CharList(s.radical, s.chars, onPick = { vm.openCursor(it.display) })
@@ -202,74 +206,97 @@ fun HomeScreen(onSearch: (String) -> Unit, onOpenRadical: () -> Unit, onBrowse: 
 }
 
 @Composable
-fun ZiScreen(zi: HanZi) {
+fun ZiScreen(zi: HanZi, onTerm: (String) -> Unit) {
     val meta = remember(zi) { buildMeta(zi) }
     LazyColumn(Modifier.fillMaxSize()) {
-        item { ZiHeader(zi, meta) }
+        item { ZiHeader(zi, meta, onTerm) }
         items(zi.sections.size) { i ->
             val sec = zi.sections[i]
             val paras = remember(sec) { RichText.toParagraphs(sec.html) }
             SectionTitle(sec.title)
-            paras.forEach { SegmentText(it) }
+            paras.forEach { SegRich(it) }
             HorizontalDivider()
         }
     }
 }
-
 @Composable
-private fun ZiHeader(zi: HanZi, meta: List<Pair<String, String>>) {
+private fun ZiHeader(zi: HanZi, meta: List<Pair<String, String>>, onTerm: (String) -> Unit) {
     Column(Modifier.padding(16.dp)) {
+        // 大字 + 巨型字形
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 zi.zi,
-                fontSize = 96.sp,
-                fontFamily = FontFamily.Serif,
-                modifier = Modifier.weight(1f),
+                fontSize = 110.sp,
+                lineHeight = 130.sp,
+                fontFamily = CJKSerif,
+                modifier = Modifier.weight(1f).padding(vertical = 4.dp),
                 textAlign = TextAlign.Center,
             )
-            if (zi.glyphSvgUrl.isNotEmpty()) {
-                Text("\uD83D\uDD17", fontSize = 10.sp)
-            }
         }
         if (zi.pinyin.isNotEmpty()) {
+            val pyText = zi.pinyin.joinToString("  ")
             Text(
-                zi.pinyin.joinToString(" "),
-                fontSize = 30.sp,
+                pyText,
+                fontSize = 28.sp,
                 color = Accent,
                 fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
             )
         }
-        if (zi.zhuyin.isNotEmpty()) TokenChips("注音", zi.zhuyin)
+        if (zi.zhuyin.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                zi.zhuyin.take(6).forEach { v -> Text("　" + v, fontSize = 15.sp, color = secondaryText(), modifier=Modifier) }
+            }
+        }
         Spacer(Modifier.height(12.dp))
-        meta.forEach { (k, v) ->
-            if (v.isNotEmpty()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(k, Modifier.width(72.dp), color = MaterialTheme.colorScheme.secondary)
-                    Text(v, fontWeight = FontWeight.Medium)
+        // 基本信息两列式排版
+        if (meta.isNotEmpty()) {
+            val l = meta.size
+            chunkRows(meta).forEach { row ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                    row.forEach { (k, v) ->
+                        Column(Modifier.weight(1f)) {
+                            Text(k, fontSize = 12.sp, color = secondaryText())
+                            Text(v, fontSize = 16.sp, fontWeight = FontWeight.Medium, fontFamily = CJKSerif)
+                        }
+                    }
                 }
             }
         }
+        // 异体 / 繁 等其他字形 → 可点跳转
         if (zi.variants.isNotEmpty()) {
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            Text("相关字形", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-                zi.variants.take(12).forEach { Text(it.zi + it.type, color = MaterialTheme.colorScheme.tertiary) }
+            MetaDivider("其他字形")
+            val grouped = zi.variants.take(30).groupBy { it.type.ifBlank { "字形" } }
+            grouped.forEach { (type, vs) ->
+                LabeledChips(type.ifBlank { "字形" }, vs.map { it.zi.ifBlank { it.type } }, CJKSerif) { t -> onTerm(t) }
             }
+        }
+        // 由该字组成的词 / 相关词语 → 可点跳转
+        val words = zi.relatedCi.filter { it.length > 1 }.distinct().take(40)
+        if (words.isNotEmpty()) {
+            MetaDivider("包含「" + zi.zi + "」的词")
+            LabeledChips("组词", words, serif = false) { t -> onTerm(t) }
         }
     }
 }
-
 @Composable
-fun WordScreen(w: CiYu) {
+fun WordScreen(w: CiYu, onTerm: (String) -> Unit) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
-            Column(Modifier.padding(16.dp)) {
-                Text(w.term, fontSize = 40.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold)
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(w.term, fontSize = 44.sp, fontFamily = CJKSerif, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                 if (w.pinyin.isNotEmpty()) {
-                    Text(w.pinyin.joinToString(" "), color = Accent, fontSize = 18.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(w.pinyin.joinToString("  "), color = Accent, fontSize = 18.sp)
+                }
+                if (w.related.isNotEmpty()) {
+                    val seen = linkedSetOf<String>()
+                    val kw = w.related.filter { it != w.term && it.isNotBlank() && it.length <= 6 }
+                    if (kw.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        LabeledChips("相关", kw.distinct().take(24), serif = false) { t -> onTerm(t) }
+                    }
                 }
             }
         }
@@ -277,67 +304,95 @@ fun WordScreen(w: CiYu) {
             item {
                 SectionTitle(sec.title)
                 val paras = remember(sec) { RichText.toParagraphs(sec.html) }
-                paras.forEach { SegmentText(it) }
+                paras.forEach { SegRich(it) }
                 HorizontalDivider()
             }
         }
     }
 }
-
 @Composable
-fun RadicalGrid(radicals: List<RadicalNode>, onPick: (RadicalNode) -> Unit) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(8),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
-    ) {
-        items(radicals) { r ->
-            Card(onClick = { onPick(r) }) {
-                Box(Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
-                    Text(r.label, fontSize = 22.sp, fontFamily = FontFamily.Serif)
+private fun SegRich(line: String) {
+    Text(
+        line,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 5.dp, bottom = 2.dp),
+        fontSize = 16.sp,
+        lineHeight = 27.sp,
+            )
+}
+@Composable
+private fun chunkRows(meta: List<Pair<String, String>>): List<List<Pair<String, String>>> {
+    val out = mutableListOf<List<Pair<String, String>>>()
+    var i = 0
+    while (i < meta.size) { out.add(meta.subList(i, (i + 2).coerceAtMost(meta.size))); i += 2 }
+    return out
+}
+@Composable
+private fun MetaDivider(title: String) {
+    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+    Text(title, style = MaterialTheme.typography.titleSmall, color = Accent, modifier = Modifier.padding(bottom = 6.dp))
+}
+@Composable
+private fun LabeledChips(title: String, items: List<String>, serif: Boolean = true, onTap: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+        if (title.isNotBlank()) Text(title, fontSize = 13.sp, color = secondaryText(), modifier = Modifier.padding(bottom = 6.dp))
+        var key = items.joinToString("|") + serif
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items.forEach { item ->
+                Surface(
+                    onClick = { onTap(item) },
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier,
+                ) {
+                    Text(item,
+                        fontFamily = if (serif) CJKSerif else FontFamily.Default,
+                        fontSize = if (serif) 21.sp else 14.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
     }
 }
+@Composable
+private fun secondaryText(): Color = MaterialTheme.colorScheme.secondary
+private val CJKSerif: FontFamily = FontFamily.Serif
 
+@Composable
+fun RadicalGrid(radicals: List<RadicalNode>, onPick: (RadicalNode) -> Unit) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(8),
+        contentPadding = PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        items(radicals) { r ->
+            Card(onClick = { onPick(r) }) {
+                Box(Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
+                    Text(r.label, fontSize = 22.sp, fontFamily = CJKSerif)
+                }
+            }
+        }
+    }
+}
 @Composable
 fun CharList(radical: String, chars: List<SearchHit>, onPick: (SearchHit) -> Unit) {
     LazyColumn(Modifier.fillMaxSize()) {
         item { Text("部首「$radical」下的字", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp)) }
-        item {
-            androidx.compose.foundation.lazy.LazyRow(
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
-            ) {} 
-        }
         val grid = mutableListOf<List<SearchHit>>()
         var i = 0
-        while (i < chars.size) {
-            grid.add(chars.subList(i, (i + 10).coerceAtMost(chars.size)))
-            i += 10
-        }
+        while (i < chars.size) { grid.add(chars.subList(i, (i + 10).coerceAtMost(chars.size))); i += 10 }
         grid.forEach { rowItems ->
             item {
-                androidx.compose.foundation.layout.Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
-                ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     rowItems.forEach { h ->
-                        Text(
-                            h.display,
-                            Modifier.weight(1f).clickable { onPick(h) },
-                            fontSize = 22.sp,
-                            textAlign = TextAlign.Center,
-                            fontFamily = FontFamily.Serif,
-                        )
+                        Text(h.display, Modifier.weight(1f).clickable { onPick(h) }, fontSize = 22.sp, textAlign = TextAlign.Center, fontFamily = CJKSerif)
                     }
                 }
             }
         }
     }
 }
-
 @Composable
 private fun SectionTitle(t: String) {
     Text(
